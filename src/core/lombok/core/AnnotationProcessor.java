@@ -83,7 +83,12 @@ public class AnnotationProcessor extends AbstractProcessor {
 		
 		for (Class<?> procEnvClass = procEnv.getClass(); procEnvClass != null; procEnvClass = procEnvClass.getSuperclass()) {
 			try {
-				Field field = Permit.getField(procEnvClass, "delegate");
+				Field field;
+				try {
+					field = Permit.getField(procEnvClass, "delegate");
+				} catch (NoSuchFieldException e) {
+					field = Permit.getField(procEnvClass, "processingEnv");
+				}
 				Object delegate = field.get(procEnv);
 				
 				return tryRecursivelyObtainJavacProcessingEnvironment((ProcessingEnvironment) delegate);
@@ -99,7 +104,7 @@ public class AnnotationProcessor extends AbstractProcessor {
 		private Processor processor;
 		
 		@Override String getName() {
-			return "sun/apple javac 1.6";
+			return "OpenJDK javac";
 		}
 		
 		@Override boolean want(ProcessingEnvironment procEnv, List<String> delayedWarnings) {

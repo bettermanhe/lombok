@@ -7,14 +7,15 @@ Each docker image contains a `/workspace` where all relevant files are located.
 
 ### `ARG lombokjar=lombok.jar`
 
-When building the image, a lombok.jar will be downloaded to `/workspace`. By default, this is the latest released version. You
-can download a specific version by adding `--build-arg lombokjar=lombok-<major.minor.build>.jar`
+When building the image, a lombok.jar will be downloaded to `/workspace/classpath` and `/workspace/modules`.
+By default, this is the latest released version. You can download a specific version by adding `--build-arg lombokjar=lombok-<major.minor.build>.jar`
 
-### `ARG jdk=12`
+### `ARG jdk=13`
 
 The jdk version to be used. Supported values:
 
-- `12` (default)
+- `13` (default)
+- `12`
 - `11`
 - `10`
 - `9`
@@ -30,5 +31,7 @@ you can mount your recently built lombok.jar by providing `-v /<lombokhome>/dist
 
 ## Examples
 
+- [ant](ant/readme.md)
+- [bazel](bazel/readme.md)
 - [gradle](gradle/readme.md)
 - [maven](maven/readme.md)

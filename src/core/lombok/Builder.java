@@ -32,8 +32,8 @@ import java.lang.annotation.Target;
  * that contains a member which is annotated with {@code @Builder}.
  * <p>
  * If a member is annotated, it must be either a constructor or a method. If a class is annotated,
- * then a private constructor is generated with all fields as arguments
- * (as if {@code @AllArgsConstructor(access = AccessLevel.PRIVATE)} is present
+ * then a package-private constructor is generated with all fields as arguments
+ * (as if {@code @AllArgsConstructor(access = AccessLevel.PACKAGE)} is present
  * on the class), and it is as if this constructor has been annotated with {@code @Builder} instead.
  * Note that this constructor is only generated if you haven't written any constructors and also haven't
  * added any explicit {@code @XArgsConstructor} annotations. In those cases, lombok will assume an all-args
@@ -153,6 +153,22 @@ public @interface Builder {
 	 * @return The builder class will be generated with this access modifier.
 	 */
 	AccessLevel access() default lombok.AccessLevel.PUBLIC;
+
+	/**
+	 * Prefix to prepend to 'set' methods in the generated builder class.  By default, generated methods do not include a prefix.
+	 *
+	 * For example, a method normally generated as {@code someField(String someField)} would instead be
+	 * generated as {@code withSomeField(String someField)} if using {@code @Builder(setterPrefix = "with")}.
+	 *
+	 * Note that using "with" to prefix builder setter methods is strongly discouraged as as "with" normally
+	 * suggests immutable data structures, and builders by definition are mutable objects.
+	 * 
+	 * For {@code @Singular} fields, the generated methods are called {@code withName}, {@code withNames}, and {@code clearNames}, instead of
+	 * the default {@code name}, {@code names}, and {@code clearNames}.
+	 * 
+	 * @return The prefix to prepend to generated method names.
+	 */
+	String setterPrefix() default "";
 	
 	/**
 	 * Put on a field (in case of {@code @Builder} on a type) or a parameter (for {@code @Builder} on a constructor or static method) to

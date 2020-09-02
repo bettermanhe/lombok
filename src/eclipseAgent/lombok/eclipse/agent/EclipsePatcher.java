@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2019 The Project Lombok Authors.
+ * Copyright (C) 2009-2020 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -57,6 +57,7 @@ public class EclipsePatcher implements AgentLauncher.AgentLaunchable {
 		String[] args = agentArgs == null ? new String[0] : agentArgs.split(":");
 		boolean forceEcj = false;
 		boolean forceEclipse = false;
+		
 		for (String arg : args) {
 			if (arg.trim().equalsIgnoreCase("ECJ")) forceEcj = true;
 			if (arg.trim().equalsIgnoreCase("ECLIPSE")) forceEclipse = true;
@@ -80,6 +81,7 @@ public class EclipsePatcher implements AgentLauncher.AgentLaunchable {
 		sm.registerTransformer(instrumentation);
 		sm.setFilter(new Filter() {
 			@Override public boolean shouldTransform(ClassLoader loader, String className, Class<?> classBeingDefined, ProtectionDomain protectionDomain, byte[] classfileBuffer) {
+				if (loader != null && loader.getClass().getName().startsWith("org.sonar.classloader.")) return false; // Relevant to bug #2351
 				if (!(loader instanceof URLClassLoader)) return true;
 				ClassLoader parent = loader.getParent();
 				if (parent == null) return true;
@@ -101,6 +103,7 @@ public class EclipsePatcher implements AgentLauncher.AgentLaunchable {
 			patchIdentifierEndReparse(sm);
 			patchRetrieveEllipsisStartPosition(sm);
 			patchRetrieveRightBraceOrSemiColonPosition(sm);
+			patchRetrieveProperRightBracketPosition(sm);
 			patchSetGeneratedFlag(sm);
 			patchDomAstReparseIssues(sm);
 			patchHideGeneratedNodes(sm);
@@ -238,6 +241,13 @@ public class EclipsePatcher implements AgentLauncher.AgentLaunchable {
 			.target(new MethodTarget("org.eclipse.jdt.internal.corext.fix.CodeStyleFix$CodeStyleVisitor", "visit", "boolean", "org.eclipse.jdt.core.dom.TypeDeclaration"))
 			.target(new MethodTarget("org.eclipse.jdt.internal.corext.fix.CodeStyleFix$CodeStyleVisitor", "visit", "boolean", "org.eclipse.jdt.core.dom.QualifiedName"))
 			.target(new MethodTarget("org.eclipse.jdt.internal.corext.fix.CodeStyleFix$CodeStyleVisitor", "visit", "boolean", "org.eclipse.jdt.core.dom.SimpleName"))
+			// since JDT 3.20
+			.target(new MethodTarget("org.eclipse.jdt.internal.corext.fix.CodeStyleFixCore$ThisQualifierVisitor", "visit", "boolean", "org.eclipse.jdt.core.dom.MethodInvocation"))
+			.target(new MethodTarget("org.eclipse.jdt.internal.corext.fix.CodeStyleFixCore$ThisQualifierVisitor", "visit", "boolean", "org.eclipse.jdt.core.dom.FieldAccess"))
+			.target(new MethodTarget("org.eclipse.jdt.internal.corext.fix.CodeStyleFixCore$CodeStyleVisitor", "visit", "boolean", "org.eclipse.jdt.core.dom.MethodInvocation"))
+			.target(new MethodTarget("org.eclipse.jdt.internal.corext.fix.CodeStyleFixCore$CodeStyleVisitor", "visit", "boolean", "org.eclipse.jdt.core.dom.TypeDeclaration"))
+			.target(new MethodTarget("org.eclipse.jdt.internal.corext.fix.CodeStyleFixCore$CodeStyleVisitor", "visit", "boolean", "org.eclipse.jdt.core.dom.QualifiedName"))
+			.target(new MethodTarget("org.eclipse.jdt.internal.corext.fix.CodeStyleFixCore$CodeStyleVisitor", "visit", "boolean", "org.eclipse.jdt.core.dom.SimpleName"))
 			// if a generated node has children we can just ignore them as well;
 			.decisionMethod(new Hook("lombok.launch.PatchFixesHider$PatchFixes", "isGenerated", "boolean", "org.eclipse.jdt.core.dom.ASTNode"))
 			.request(StackRequest.PARAM1)
@@ -436,6 +446,16 @@ public class EclipsePatcher implements AgentLauncher.AgentLaunchable {
 //				.transplant().request(StackRequest.RETURN_VALUE, StackRequest.PARAM2).build());
 	}
 
+	private static void patchRetrieveProperRightBracketPosition(ScriptManager sm) {
+		sm.addScript(ScriptBuilder.wrapMethodCall()
+			.target(new MethodTarget("org.eclipse.jdt.core.dom.ASTConverter", "extractSubArrayType", "org.eclipse.jdt.core.dom.ArrayType", "org.eclipse.jdt.core.dom.ArrayType", "int", "int"))
+			.methodToWrap(new Hook("org.eclipse.jdt.core.dom.ASTConverter", "retrieveProperRightBracketPosition", "int", "int", "int"))
+			.wrapMethod(new Hook("lombok.launch.PatchFixesHider$PatchFixes", "fixRetrieveProperRightBracketPosition", "int", "int", "org.eclipse.jdt.core.dom.ArrayType"))
+			.requestExtra(StackRequest.PARAM1)
+			.transplant()
+			.build());
+	}
+
 	private static void patchSetGeneratedFlag(ScriptManager sm) {
 		sm.addScript(ScriptBuilder.addField()
 				.targetClass("org.eclipse.jdt.internal.compiler.ast.ASTNode")
@@ -552,6 +572,22 @@ public class EclipsePatcher implements AgentLauncher.AgentLaunchable {
 				.target(new MethodTarget("org.eclipse.jdt.core.dom.ASTConverter", "setQualifiedNameNameAndSourceRanges", "org.eclipse.jdt.core.dom.QualifiedName", "char[][]", "long[]", "org.eclipse.jdt.internal.compiler.ast.ASTNode"))
 				.methodToWrap(new Hook("org.eclipse.jdt.core.dom.QualifiedName", "<init>", "void", "org.eclipse.jdt.core.dom.AST"))
 				.requestExtra(StackRequest.PARAM3)
+				.wrapMethod(new Hook("lombok.launch.PatchFixesHider$PatchFixes", "setIsGeneratedFlagForName", "void",
+						"org.eclipse.jdt.core.dom.Name", "java.lang.Object"))
+				.transplant().build());
+
+		sm.addScript(ScriptBuilder.wrapMethodCall()
+				.target(new MethodTarget("org.eclipse.jdt.core.dom.ASTConverter", "setTypeNameForAnnotation", "void", "org.eclipse.jdt.internal.compiler.ast.Annotation", "org.eclipse.jdt.core.dom.Annotation"))
+				.methodToWrap(new Hook("org.eclipse.jdt.core.dom.SimpleName", "<init>", "void", "org.eclipse.jdt.core.dom.AST"))
+				.requestExtra(StackRequest.PARAM1)
+				.wrapMethod(new Hook("lombok.launch.PatchFixesHider$PatchFixes", "setIsGeneratedFlagForName", "void",
+						"org.eclipse.jdt.core.dom.Name", "java.lang.Object"))
+				.transplant().build());
+		
+		sm.addScript(ScriptBuilder.wrapMethodCall()
+				.target(new MethodTarget("org.eclipse.jdt.core.dom.ASTConverter", "setTypeNameForAnnotation", "void", "org.eclipse.jdt.internal.compiler.ast.Annotation", "org.eclipse.jdt.core.dom.Annotation"))
+				.methodToWrap(new Hook("org.eclipse.jdt.core.dom.QualifiedName", "<init>", "void", "org.eclipse.jdt.core.dom.AST"))
+				.requestExtra(StackRequest.PARAM1)
 				.wrapMethod(new Hook("lombok.launch.PatchFixesHider$PatchFixes", "setIsGeneratedFlagForName", "void",
 						"org.eclipse.jdt.core.dom.Name", "java.lang.Object"))
 				.transplant().build());

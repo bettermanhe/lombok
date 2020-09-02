@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2019 The Project Lombok Authors.
+ * Copyright (C) 2009-2020 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -38,6 +38,7 @@ import lombok.Getter;
 import lombok.core.AST.Kind;
 import lombok.core.AnnotationValues;
 import lombok.core.configuration.CheckerFrameworkVersion;
+import lombok.delombok.LombokOptionsFactory;
 import lombok.javac.JavacAnnotationHandler;
 import lombok.javac.JavacNode;
 import lombok.javac.JavacTreeMaker;
@@ -231,9 +232,19 @@ public class HandleGetter extends JavacAnnotationHandler<Getter> {
 		
 		List<JCStatement> statements;
 		JCTree toClearOfMarkers = null;
+		int[] methodArgPos = null;
+		boolean addSuppressWarningsUnchecked = false;
 		if (lazy && !inNetbeansEditor(field)) {
 			toClearOfMarkers = fieldNode.init;
+			if (toClearOfMarkers instanceof JCMethodInvocation) {
+				List<JCExpression> args = ((JCMethodInvocation) toClearOfMarkers).args;
+				methodArgPos = new int[args.length()];
+				for (int i = 0; i < methodArgPos.length; i++) {
+					methodArgPos[i] = args.get(i).pos;
+				}
+			}
 			statements = createLazyGetterBody(treeMaker, field, source);
+			addSuppressWarningsUnchecked = LombokOptionsFactory.getDelombokOptions(field.getContext()).getFormatPreferences().generateSuppressWarnings();
 		} else {
 			statements = createSimpleGetterBody(treeMaker, field);
 		}
@@ -248,14 +259,32 @@ public class HandleGetter extends JavacAnnotationHandler<Getter> {
 		List<JCAnnotation> copyableAnnotations = findCopyableAnnotations(field);
 		List<JCAnnotation> delegates = findDelegatesAndRemoveFromField(field);
 		List<JCAnnotation> annsOnMethod = copyAnnotations(onMethod).appendList(copyableAnnotations);
-		if (getCheckerFrameworkVersion(field).generateSideEffectFree()) annsOnMethod = annsOnMethod.prepend(treeMaker.Annotation(genTypeRef(field, CheckerFrameworkVersion.NAME__SIDE_EFFECT_FREE), List.<JCExpression>nil()));
+		if (field.isFinal()) {
+			if (getCheckerFrameworkVersion(field).generatePure()) annsOnMethod = annsOnMethod.prepend(treeMaker.Annotation(genTypeRef(field, CheckerFrameworkVersion.NAME__PURE), List.<JCExpression>nil()));
+		} else {
+			if (getCheckerFrameworkVersion(field).generateSideEffectFree()) annsOnMethod = annsOnMethod.prepend(treeMaker.Annotation(genTypeRef(field, CheckerFrameworkVersion.NAME__SIDE_EFFECT_FREE), List.<JCExpression>nil()));
+		}
 		if (isFieldDeprecated(field)) annsOnMethod = annsOnMethod.prepend(treeMaker.Annotation(genJavaLangTypeRef(field, "Deprecated"), List.<JCExpression>nil()));
 		
 		JCMethodDecl decl = recursiveSetGeneratedBy(treeMaker.MethodDef(treeMaker.Modifiers(access, annsOnMethod), methodName, methodType,
-				methodGenericParams, parameters, throwsClauses, methodBody, annotationMethodDefaultValue), source, field.getContext());
+			methodGenericParams, parameters, throwsClauses, methodBody, annotationMethodDefaultValue), source, field.getContext());
 		
 		if (toClearOfMarkers != null) recursiveSetGeneratedBy(toClearOfMarkers, null, null);
+		if (methodArgPos != null) {
+			for (int i = 0; i < methodArgPos.length; i++) {
+				((JCMethodInvocation) toClearOfMarkers).args.get(i).pos = methodArgPos[i];
+			}
+		}
 		decl.mods.annotations = decl.mods.annotations.appendList(delegates);
+		
+		if (addSuppressWarningsUnchecked) {
+			ListBuffer<JCExpression> suppressions = new ListBuffer<JCExpression>();
+			if (!Boolean.FALSE.equals(field.getAst().readConfiguration(ConfigurationKeys.ADD_SUPPRESSWARNINGS_ANNOTATIONS))) {
+				suppressions.add(treeMaker.Literal("all"));
+			}
+			suppressions.add(treeMaker.Literal("unchecked"));
+			addAnnotation(decl.mods, field, source.pos, source, field.getContext(), "java.lang.SuppressWarnings", treeMaker.NewArray(null, List.<JCExpression>nil(), suppressions.toList()));
+		}
 		
 		copyJavadoc(field, decl, CopyJavadoc.GETTER);
 		return decl;
@@ -418,7 +447,7 @@ public class HandleGetter extends JavacAnnotationHandler<Getter> {
 		
 		/*	private final java.util.concurrent.atomic.AtomicReference<Object> fieldName = new java.util.concurrent.atomic.AtomicReference<Object>(); */ {
 			field.vartype = recursiveSetGeneratedBy(
-					maker.TypeApply(chainDotsString(fieldNode, AR), List.<JCExpression>of(genJavaLangTypeRef(fieldNode, "Object"))), source, fieldNode.getContext());
+				maker.TypeApply(chainDotsString(fieldNode, AR), List.<JCExpression>of(genJavaLangTypeRef(fieldNode, "Object"))), source, fieldNode.getContext());
 			field.init = recursiveSetGeneratedBy(maker.NewClass(null, NIL_EXPRESSION, copyType(maker, field), NIL_EXPRESSION, null), source, fieldNode.getContext());
 		}
 		

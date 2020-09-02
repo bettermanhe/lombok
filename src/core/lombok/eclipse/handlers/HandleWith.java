@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2019 The Project Lombok Authors.
+ * Copyright (C) 2012-2020 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -121,7 +121,7 @@ public class HandleWith extends EclipseAnnotationHandler<With> {
 	}
 	
 	@Override public void handle(AnnotationValues<With> annotation, Annotation ast, EclipseNode annotationNode) {
-		handleExperimentalFlagUsage(annotationNode, ConfigurationKeys.WITH_FLAG_USAGE, "@With");
+		handleFlagUsage(annotationNode, ConfigurationKeys.WITH_FLAG_USAGE, "@With");
 		
 		EclipseNode node = annotationNode.up();
 		AccessLevel level = annotation.getInstance().value();
@@ -153,9 +153,9 @@ public class HandleWith extends EclipseAnnotationHandler<With> {
 	}
 	
 	public void createWithForField(
-			AccessLevel level, EclipseNode fieldNode, EclipseNode sourceNode,
-			boolean whineIfExists, List<Annotation> onMethod,
-			List<Annotation> onParam) {
+		AccessLevel level, EclipseNode fieldNode, EclipseNode sourceNode,
+		boolean whineIfExists, List<Annotation> onMethod,
+		List<Annotation> onParam) {
 		
 		ASTNode source = sourceNode.get();
 		if (fieldNode.getKind() != Kind.FIELD) {
@@ -215,7 +215,7 @@ public class HandleWith extends EclipseAnnotationHandler<With> {
 		injectMethod(fieldNode.up(), method);
 	}
 	
-	public MethodDeclaration createWith(TypeDeclaration parent, EclipseNode fieldNode, String name, int modifier, EclipseNode sourceNode, List<Annotation> onMethod, List<Annotation> onParam, boolean makeAbstract ) {
+	public MethodDeclaration createWith(TypeDeclaration parent, EclipseNode fieldNode, String name, int modifier, EclipseNode sourceNode, List<Annotation> onMethod, List<Annotation> onParam, boolean makeAbstract) {
 		ASTNode source = sourceNode.get();
 		if (name == null) return null;
 		FieldDeclaration field = (FieldDeclaration) fieldNode.get();
@@ -278,7 +278,7 @@ public class HandleWith extends EclipseAnnotationHandler<With> {
 			
 			List<Statement> statements = new ArrayList<Statement>(5);
 			if (hasNonNullAnnotations(fieldNode)) {
-				Statement nullCheck = generateNullCheck(field, sourceNode);
+				Statement nullCheck = generateNullCheck(field, sourceNode, null);
 				if (nullCheck != null) statements.add(nullCheck);
 			}
 			statements.add(returnStatement);
@@ -286,6 +286,8 @@ public class HandleWith extends EclipseAnnotationHandler<With> {
 			method.statements = statements.toArray(new Statement[0]);
 		}
 		param.annotations = copyAnnotations(source, copyableAnnotations, onParam.toArray(new Annotation[0]));
+		
+		EclipseHandlerUtil.createRelevantNonNullAnnotation(fieldNode, method);
 		
 		method.traverse(new SetGeneratedByVisitor(source), parent.scope);
 		return method;

@@ -8,15 +8,14 @@ public class SuperBuilderCustomized {
 				field1 = 0;
 				return self();
 			}
+			public B field1(int field1) {
+				this.field1 = field1 + 1;
+				return self();
+			}
 			@java.lang.SuppressWarnings("all")
 			protected abstract B self();
 			@java.lang.SuppressWarnings("all")
 			public abstract C build();
-			@java.lang.SuppressWarnings("all")
-			public B field1(final int field1) {
-				this.field1 = field1;
-				return self();
-			}
 			@java.lang.Override
 			@java.lang.SuppressWarnings("all")
 			public java.lang.String toString() {
@@ -24,29 +23,28 @@ public class SuperBuilderCustomized {
 			}
 		}
 		int field1;
+		protected Parent(ParentBuilder<?, ?> b) {
+			if (b.field1 == 0) throw new IllegalArgumentException("field1 must be != 0");
+			this.field1 = b.field1;
+		}
+		public static SuperBuilderCustomized.Parent.ParentBuilder<?, ?> builder(int field1) {
+			return new SuperBuilderCustomized.Parent.ParentBuilderImpl().field1(field1);
+		}
 		@java.lang.SuppressWarnings("all")
-		private static final class ParentBuilderImpl extends ParentBuilder<Parent, ParentBuilderImpl> {
+		private static final class ParentBuilderImpl extends SuperBuilderCustomized.Parent.ParentBuilder<SuperBuilderCustomized.Parent, SuperBuilderCustomized.Parent.ParentBuilderImpl> {
 			@java.lang.SuppressWarnings("all")
 			private ParentBuilderImpl() {
 			}
 			@java.lang.Override
 			@java.lang.SuppressWarnings("all")
-			protected ParentBuilderImpl self() {
+			protected SuperBuilderCustomized.Parent.ParentBuilderImpl self() {
 				return this;
 			}
 			@java.lang.Override
 			@java.lang.SuppressWarnings("all")
-			public Parent build() {
-				return new Parent(this);
+			public SuperBuilderCustomized.Parent build() {
+				return new SuperBuilderCustomized.Parent(this);
 			}
-		}
-		@java.lang.SuppressWarnings("all")
-		protected Parent(final ParentBuilder<?, ?> b) {
-			this.field1 = b.field1;
-		}
-		@java.lang.SuppressWarnings("all")
-		public static ParentBuilder<?, ?> builder() {
-			return new ParentBuilderImpl();
 		}
 	}
 	public static class Child extends Parent {
@@ -61,7 +59,7 @@ public class SuperBuilderCustomized {
 			}
 			@java.lang.Override
 			@java.lang.SuppressWarnings("all")
-			protected ChildBuilderImpl self() {
+			protected SuperBuilderCustomized.Child.ChildBuilderImpl self() {
 				return this;
 			}
 		}
@@ -70,7 +68,7 @@ public class SuperBuilderCustomized {
 			return new ChildBuilderImpl().field2(10.0);
 		}
 		@java.lang.SuppressWarnings("all")
-		public static abstract class ChildBuilder<C extends Child, B extends ChildBuilder<C, B>> extends Parent.ParentBuilder<C, B> {
+		public static abstract class ChildBuilder<C extends SuperBuilderCustomized.Child, B extends SuperBuilderCustomized.Child.ChildBuilder<C, B>> extends Parent.ParentBuilder<C, B> {
 			@java.lang.SuppressWarnings("all")
 			private double field2;
 			@java.lang.Override
@@ -91,7 +89,7 @@ public class SuperBuilderCustomized {
 			}
 		}
 		@java.lang.SuppressWarnings("all")
-		protected Child(final ChildBuilder<?, ?> b) {
+		protected Child(final SuperBuilderCustomized.Child.ChildBuilder<?, ?> b) {
 			super(b);
 			this.field2 = b.field2;
 		}

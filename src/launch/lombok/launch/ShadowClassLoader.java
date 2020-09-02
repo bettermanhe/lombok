@@ -321,8 +321,9 @@ class ShadowClassLoader extends ClassLoader {
 	}
 	
 	private static String urlDecode(String in) {
+		final String plusFixed = in.replaceAll("\\+", "%2B");
 		try {
-			return URLDecoder.decode(in, "UTF-8");
+			return URLDecoder.decode(plusFixed, "UTF-8");
 		} catch (UnsupportedEncodingException e) {
 			throw new InternalError("UTF-8 not supported");
 		}
@@ -364,16 +365,20 @@ class ShadowClassLoader extends ClassLoader {
 			FileInputStream jar = new FileInputStream(jarLoc);
 			try {
 				ZipInputStream zip = new ZipInputStream(jar);
-				while (true) {
-					ZipEntry entry = zip.getNextEntry();
-					if (entry == null) {
-						jarLocCache.put(key, false);
-						return false;
+				try {
+					while (true) {
+						ZipEntry entry = zip.getNextEntry();
+						if (entry == null) {
+							jarLocCache.put(key, false);
+							return false;
+						}
+						if (!"META-INF/ShadowClassLoader".equals(entry.getName())) continue;
+						boolean v = sclFileContainsSuffix(zip, suffix);
+						jarLocCache.put(key, v);
+						return v;
 					}
-					if (!"META-INF/ShadowClassLoader".equals(entry.getName())) continue;
-					boolean v = sclFileContainsSuffix(zip, suffix);
-					jarLocCache.put(key, v);
-					return v;
+				} finally {
+					zip.close();
 				}
 			} finally {
 				jar.close();

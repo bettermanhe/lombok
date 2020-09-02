@@ -11,7 +11,7 @@ class CheckerFrameworkSuperBuilder {
 			return 5;
 		}
 		@java.lang.SuppressWarnings("all")
-		public static abstract class ParentBuilder<C extends Parent, B extends ParentBuilder<C, B>> {
+		public static abstract class ParentBuilder<C extends CheckerFrameworkSuperBuilder.Parent, B extends CheckerFrameworkSuperBuilder.Parent.ParentBuilder<C, B>> {
 			@java.lang.SuppressWarnings("all")
 			private boolean x$set;
 			@java.lang.SuppressWarnings("all")
@@ -23,28 +23,28 @@ class CheckerFrameworkSuperBuilder {
 			@java.lang.SuppressWarnings("all")
 			private java.util.ArrayList<String> names;
 			@org.checkerframework.checker.builder.qual.ReturnsReceiver
-			@org.checkerframework.dataflow.qual.SideEffectFree
+			@org.checkerframework.dataflow.qual.Pure
 			@java.lang.SuppressWarnings("all")
 			protected abstract B self();
 			@org.checkerframework.dataflow.qual.SideEffectFree
 			@java.lang.SuppressWarnings("all")
-			public abstract C build(@org.checkerframework.checker.builder.qual.CalledMethods({"y", "z"}) Parent this);
+			public abstract C build(@org.checkerframework.checker.builder.qual.CalledMethods({"y", "z"}) CheckerFrameworkSuperBuilder.Parent this);
 			@org.checkerframework.checker.builder.qual.ReturnsReceiver
 			@java.lang.SuppressWarnings("all")
-			public B x(@org.checkerframework.checker.builder.qual.NotCalledMethods("x") ParentBuilder this, final int x) {
+			public B x(@org.checkerframework.checker.builder.qual.NotCalledMethods("x") CheckerFrameworkSuperBuilder.Parent.ParentBuilder<C, B> this, final int x) {
 				this.x$value = x;
 				x$set = true;
 				return self();
 			}
 			@org.checkerframework.checker.builder.qual.ReturnsReceiver
 			@java.lang.SuppressWarnings("all")
-			public B y(@org.checkerframework.checker.builder.qual.NotCalledMethods("y") ParentBuilder this, final int y) {
+			public B y(@org.checkerframework.checker.builder.qual.NotCalledMethods("y") CheckerFrameworkSuperBuilder.Parent.ParentBuilder<C, B> this, final int y) {
 				this.y = y;
 				return self();
 			}
 			@org.checkerframework.checker.builder.qual.ReturnsReceiver
 			@java.lang.SuppressWarnings("all")
-			public B z(@org.checkerframework.checker.builder.qual.NotCalledMethods("z") ParentBuilder this, final int z) {
+			public B z(@org.checkerframework.checker.builder.qual.NotCalledMethods("z") CheckerFrameworkSuperBuilder.Parent.ParentBuilder<C, B> this, final int z) {
 				this.z = z;
 				return self();
 			}
@@ -58,6 +58,9 @@ class CheckerFrameworkSuperBuilder {
 			@org.checkerframework.checker.builder.qual.ReturnsReceiver
 			@java.lang.SuppressWarnings("all")
 			public B names(final java.util.Collection<? extends String> names) {
+				if (names == null) {
+					throw new java.lang.NullPointerException("names cannot be null");
+				}
 				if (this.names == null) this.names = new java.util.ArrayList<String>();
 				this.names.addAll(names);
 				return self();
@@ -76,30 +79,30 @@ class CheckerFrameworkSuperBuilder {
 			}
 		}
 		@java.lang.SuppressWarnings("all")
-		private static final class ParentBuilderImpl extends ParentBuilder<Parent, ParentBuilderImpl> {
+		private static final class ParentBuilderImpl extends CheckerFrameworkSuperBuilder.Parent.ParentBuilder<CheckerFrameworkSuperBuilder.Parent, CheckerFrameworkSuperBuilder.Parent.ParentBuilderImpl> {
 			@org.checkerframework.common.aliasing.qual.Unique
 			@java.lang.SuppressWarnings("all")
 			private ParentBuilderImpl() {
 			}
 			@java.lang.Override
 			@org.checkerframework.checker.builder.qual.ReturnsReceiver
-			@org.checkerframework.dataflow.qual.SideEffectFree
+			@org.checkerframework.dataflow.qual.Pure
 			@java.lang.SuppressWarnings("all")
-			protected ParentBuilderImpl self() {
+			protected CheckerFrameworkSuperBuilder.Parent.ParentBuilderImpl self() {
 				return this;
 			}
 			@org.checkerframework.dataflow.qual.SideEffectFree
 			@java.lang.Override
 			@java.lang.SuppressWarnings("all")
-			public Parent build(@org.checkerframework.checker.builder.qual.CalledMethods({"y", "z"}) ParentBuilderImpl this) {
-				return new Parent(this);
+			public CheckerFrameworkSuperBuilder.Parent build(@org.checkerframework.checker.builder.qual.CalledMethods({"y", "z"}) CheckerFrameworkSuperBuilder.Parent.ParentBuilderImpl this) {
+				return new CheckerFrameworkSuperBuilder.Parent(this);
 			}
 		}
 		@org.checkerframework.dataflow.qual.SideEffectFree
 		@java.lang.SuppressWarnings("all")
-		protected Parent(final ParentBuilder<?, ?> b) {
+		protected Parent(final CheckerFrameworkSuperBuilder.Parent.ParentBuilder<?, ?> b) {
 			if (b.x$set) this.x = b.x$value;
-			 else this.x = Parent.$default$x();
+			 else this.x = CheckerFrameworkSuperBuilder.Parent.$default$x();
 			this.y = b.y;
 			this.z = b.z;
 			java.util.List<String> names;
@@ -117,11 +120,11 @@ class CheckerFrameworkSuperBuilder {
 		}
 		@org.checkerframework.dataflow.qual.SideEffectFree
 		@java.lang.SuppressWarnings("all")
-		public static ParentBuilder<?, ?> builder() {
-			return new ParentBuilderImpl();
+		public static CheckerFrameworkSuperBuilder.Parent.ParentBuilder<?, ?> builder() {
+			return new CheckerFrameworkSuperBuilder.Parent.ParentBuilderImpl();
 		}
 	}
-	public static class Child extends Parent {
+	public static class ZChild extends Parent {
 		int a;
 		int b;
 		@java.lang.SuppressWarnings("all")
@@ -129,7 +132,7 @@ class CheckerFrameworkSuperBuilder {
 			return 1;
 		}
 		@java.lang.SuppressWarnings("all")
-		public static abstract class ChildBuilder<C extends Child, B extends ChildBuilder<C, B>> extends Parent.ParentBuilder<C, B> {
+		public static abstract class ZChildBuilder<C extends CheckerFrameworkSuperBuilder.ZChild, B extends CheckerFrameworkSuperBuilder.ZChild.ZChildBuilder<C, B>> extends Parent.ParentBuilder<C, B> {
 			@java.lang.SuppressWarnings("all")
 			private boolean a$set;
 			@java.lang.SuppressWarnings("all")
@@ -138,23 +141,23 @@ class CheckerFrameworkSuperBuilder {
 			private int b;
 			@java.lang.Override
 			@org.checkerframework.checker.builder.qual.ReturnsReceiver
-			@org.checkerframework.dataflow.qual.SideEffectFree
+			@org.checkerframework.dataflow.qual.Pure
 			@java.lang.SuppressWarnings("all")
 			protected abstract B self();
 			@org.checkerframework.dataflow.qual.SideEffectFree
 			@java.lang.Override
 			@java.lang.SuppressWarnings("all")
-			public abstract C build(@org.checkerframework.checker.builder.qual.CalledMethods("b") Child this);
+			public abstract C build(@org.checkerframework.checker.builder.qual.CalledMethods("b") CheckerFrameworkSuperBuilder.ZChild this);
 			@org.checkerframework.checker.builder.qual.ReturnsReceiver
 			@java.lang.SuppressWarnings("all")
-			public B a(@org.checkerframework.checker.builder.qual.NotCalledMethods("a") ChildBuilder this, final int a) {
+			public B a(@org.checkerframework.checker.builder.qual.NotCalledMethods("a") CheckerFrameworkSuperBuilder.ZChild.ZChildBuilder<C, B> this, final int a) {
 				this.a$value = a;
 				a$set = true;
 				return self();
 			}
 			@org.checkerframework.checker.builder.qual.ReturnsReceiver
 			@java.lang.SuppressWarnings("all")
-			public B b(@org.checkerframework.checker.builder.qual.NotCalledMethods("b") ChildBuilder this, final int b) {
+			public B b(@org.checkerframework.checker.builder.qual.NotCalledMethods("b") CheckerFrameworkSuperBuilder.ZChild.ZChildBuilder<C, B> this, final int b) {
 				this.b = b;
 				return self();
 			}
@@ -162,41 +165,41 @@ class CheckerFrameworkSuperBuilder {
 			@java.lang.Override
 			@java.lang.SuppressWarnings("all")
 			public java.lang.String toString() {
-				return "CheckerFrameworkSuperBuilder.Child.ChildBuilder(super=" + super.toString() + ", a$value=" + this.a$value + ", b=" + this.b + ")";
+				return "CheckerFrameworkSuperBuilder.ZChild.ZChildBuilder(super=" + super.toString() + ", a$value=" + this.a$value + ", b=" + this.b + ")";
 			}
 		}
 		@java.lang.SuppressWarnings("all")
-		private static final class ChildBuilderImpl extends ChildBuilder<Child, ChildBuilderImpl> {
+		private static final class ZChildBuilderImpl extends CheckerFrameworkSuperBuilder.ZChild.ZChildBuilder<CheckerFrameworkSuperBuilder.ZChild, CheckerFrameworkSuperBuilder.ZChild.ZChildBuilderImpl> {
 			@org.checkerframework.common.aliasing.qual.Unique
 			@java.lang.SuppressWarnings("all")
-			private ChildBuilderImpl() {
+			private ZChildBuilderImpl() {
 			}
 			@java.lang.Override
 			@org.checkerframework.checker.builder.qual.ReturnsReceiver
-			@org.checkerframework.dataflow.qual.SideEffectFree
+			@org.checkerframework.dataflow.qual.Pure
 			@java.lang.SuppressWarnings("all")
-			protected ChildBuilderImpl self() {
+			protected CheckerFrameworkSuperBuilder.ZChild.ZChildBuilderImpl self() {
 				return this;
 			}
 			@org.checkerframework.dataflow.qual.SideEffectFree
 			@java.lang.Override
 			@java.lang.SuppressWarnings("all")
-			public Child build(@org.checkerframework.checker.builder.qual.CalledMethods("b") ChildBuilderImpl this) {
-				return new Child(this);
+			public CheckerFrameworkSuperBuilder.ZChild build(@org.checkerframework.checker.builder.qual.CalledMethods("b") CheckerFrameworkSuperBuilder.ZChild.ZChildBuilderImpl this) {
+				return new CheckerFrameworkSuperBuilder.ZChild(this);
 			}
 		}
 		@org.checkerframework.dataflow.qual.SideEffectFree
 		@java.lang.SuppressWarnings("all")
-		protected Child(final ChildBuilder<?, ?> b) {
+		protected ZChild(final CheckerFrameworkSuperBuilder.ZChild.ZChildBuilder<?, ?> b) {
 			super(b);
 			if (b.a$set) this.a = b.a$value;
-			 else this.a = Child.$default$a();
+			 else this.a = CheckerFrameworkSuperBuilder.ZChild.$default$a();
 			this.b = b.b;
 		}
 		@org.checkerframework.dataflow.qual.SideEffectFree
 		@java.lang.SuppressWarnings("all")
-		public static ChildBuilder<?, ?> builder() {
-			return new ChildBuilderImpl();
+		public static CheckerFrameworkSuperBuilder.ZChild.ZChildBuilder<?, ?> builder() {
+			return new CheckerFrameworkSuperBuilder.ZChild.ZChildBuilderImpl();
 		}
 	}
 }

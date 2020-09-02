@@ -40,7 +40,6 @@ import org.eclipse.jdt.internal.compiler.ast.Expression;
 import org.eclipse.jdt.internal.compiler.ast.IfStatement;
 import org.eclipse.jdt.internal.compiler.ast.MessageSend;
 import org.eclipse.jdt.internal.compiler.ast.NullLiteral;
-import org.eclipse.jdt.internal.compiler.ast.OperatorIds;
 import org.eclipse.jdt.internal.compiler.ast.SingleNameReference;
 import org.eclipse.jdt.internal.compiler.ast.Statement;
 import org.eclipse.jdt.internal.compiler.ast.SynchronizedStatement;
@@ -145,7 +144,7 @@ public class HandleNonNull extends EclipseAnnotationHandler<NonNull> {
 		// and if they exist, create a new method in the class: 'private static <T> T lombok$nullCheck(T expr, String msg) {if (expr == null) throw NPE; return expr;}' and
 		// wrap all references to it in the super/this to a call to this method.
 		
-		Statement nullCheck = generateNullCheck(param, annotationNode);
+		Statement nullCheck = generateNullCheck(param, annotationNode, null);
 		
 		if (nullCheck == null) {
 			// @NonNull applied to a primitive. Kinda pointless. Let's generate a warning.
@@ -232,11 +231,11 @@ public class HandleNonNull extends EclipseAnnotationHandler<NonNull> {
 			Expression cond = isIf ? ((IfStatement) stat).condition : ((AssertStatement) stat).assertExpression;
 			if (!(cond instanceof EqualExpression)) return null;
 			EqualExpression bin = (EqualExpression) cond;
-			int operatorId = ((bin.bits & ASTNode.OperatorMASK) >> ASTNode.OperatorSHIFT);
+			String op = bin.operatorToString();
 			if (isIf) {
-				if (operatorId != OperatorIds.EQUAL_EQUAL) return null;
+				if (!"==".equals(op)) return null;
 			} else {
-				if (operatorId != OperatorIds.NOT_EQUAL) return null;
+				if (!"!=".equals(op)) return null;
 			}
 			if (!(bin.left instanceof SingleNameReference)) return null;
 			if (!(bin.right instanceof NullLiteral)) return null;

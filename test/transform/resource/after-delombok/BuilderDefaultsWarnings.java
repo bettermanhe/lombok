@@ -1,3 +1,6 @@
+//skip-idempotent
+import lombok.Builder;
+@Builder
 public class BuilderDefaultsWarnings {
 	long x = System.currentTimeMillis();
 	final int y = 5;
@@ -21,29 +24,32 @@ public class BuilderDefaultsWarnings {
 		BuilderDefaultsWarningsBuilder() {
 		}
 		@java.lang.SuppressWarnings("all")
-		public BuilderDefaultsWarningsBuilder x(final long x) {
+		public BuilderDefaultsWarnings.BuilderDefaultsWarningsBuilder x(final long x) {
 			this.x = x;
 			return this;
 		}
 		@java.lang.SuppressWarnings("all")
-		public BuilderDefaultsWarningsBuilder z(final int z) {
+		public BuilderDefaultsWarnings.BuilderDefaultsWarningsBuilder z(final int z) {
 			this.z = z;
 			return this;
 		}
 		@java.lang.SuppressWarnings("all")
-		public BuilderDefaultsWarningsBuilder item(final String item) {
+		public BuilderDefaultsWarnings.BuilderDefaultsWarningsBuilder item(final String item) {
 			if (this.items == null) this.items = new java.util.ArrayList<String>();
 			this.items.add(item);
 			return this;
 		}
 		@java.lang.SuppressWarnings("all")
-		public BuilderDefaultsWarningsBuilder items(final java.util.Collection<? extends String> items) {
+		public BuilderDefaultsWarnings.BuilderDefaultsWarningsBuilder items(final java.util.Collection<? extends String> items) {
+			if (items == null) {
+				throw new java.lang.NullPointerException("items cannot be null");
+			}
 			if (this.items == null) this.items = new java.util.ArrayList<String>();
 			this.items.addAll(items);
 			return this;
 		}
 		@java.lang.SuppressWarnings("all")
-		public BuilderDefaultsWarningsBuilder clearItems() {
+		public BuilderDefaultsWarnings.BuilderDefaultsWarningsBuilder clearItems() {
 			if (this.items != null) this.items.clear();
 			return this;
 		}
@@ -60,7 +66,7 @@ public class BuilderDefaultsWarnings {
 			default: 
 				items = java.util.Collections.unmodifiableList(new java.util.ArrayList<String>(this.items));
 			}
-			return new BuilderDefaultsWarnings(x, z, items);
+			return new BuilderDefaultsWarnings(this.x, this.z, items);
 		}
 		@java.lang.Override
 		@java.lang.SuppressWarnings("all")
@@ -69,12 +75,13 @@ public class BuilderDefaultsWarnings {
 		}
 	}
 	@java.lang.SuppressWarnings("all")
-	public static BuilderDefaultsWarningsBuilder builder() {
-		return new BuilderDefaultsWarningsBuilder();
+	public static BuilderDefaultsWarnings.BuilderDefaultsWarningsBuilder builder() {
+		return new BuilderDefaultsWarnings.BuilderDefaultsWarningsBuilder();
 	}
 }
 class NoBuilderButHasDefaults {
 	private final long z = 5;
+	@Builder
 	public NoBuilderButHasDefaults() {
 	}
 	@java.lang.SuppressWarnings("all")
@@ -93,7 +100,7 @@ class NoBuilderButHasDefaults {
 		}
 	}
 	@java.lang.SuppressWarnings("all")
-	public static NoBuilderButHasDefaultsBuilder builder() {
-		return new NoBuilderButHasDefaultsBuilder();
+	public static NoBuilderButHasDefaults.NoBuilderButHasDefaultsBuilder builder() {
+		return new NoBuilderButHasDefaults.NoBuilderButHasDefaultsBuilder();
 	}
 }

@@ -23,7 +23,6 @@ module lombok {
 	requires java.compiler;
 	requires java.instrument;
 	requires jdk.unsupported;
-	requires static org.mapstruct.processor;
 	
 	exports lombok;
 	exports lombok.experimental;
@@ -34,6 +33,7 @@ module lombok {
 	exports lombok.extern.slf4j;
 	exports lombok.extern.flogger;
 	
+	exports lombok.launch to lombok.mapstruct;
+	
 	provides javax.annotation.processing.Processor with lombok.launch.AnnotationProcessorHider.AnnotationProcessor;
-	provides org.mapstruct.ap.spi.AstModifyingAnnotationProcessor with lombok.launch.AnnotationProcessorHider.AstModificationNotifier;
 }

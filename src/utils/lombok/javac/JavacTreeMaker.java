@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013-2018 The Project Lombok Authors.
+ * Copyright (C) 2013-2020 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -343,10 +343,7 @@ public class JavacTreeMaker {
 		Method method = getFromCache(m);
 		try {
 			if (m.returnType.isPrimitive()) {
-				Object res = method.invoke(owner, args);
-				String sn = res.getClass().getSimpleName().toLowerCase();
-				if (!sn.startsWith(m.returnType.getSimpleName())) throw new ClassCastException(res.getClass() + " to " + m.returnType);
-				return (J) res;
+				return (J) method.invoke(owner, args);
 			}
 			return m.returnType.cast(method.invoke(owner, args));
 		} catch (InvocationTargetException e) {
@@ -862,6 +859,12 @@ public class JavacTreeMaker {
 	private static final MethodId<JCAnnotation> TypeAnnotationWithAttributeOnly = MethodId("TypeAnnotation", JCAnnotation.class, Attribute.class);
 	public JCAnnotation TypeAnnotation(Attribute a) {
 		return invoke(TypeAnnotationWithAttributeOnly, a);
+	}
+	
+	//javac versions: 8
+	private static final MethodId<JCExpression> AnnotatedType = MethodId("AnnotatedType", JCExpression.class, List.class, JCExpression.class);
+	public JCExpression AnnotatedType(List<JCAnnotation> annotations, JCExpression underlyingType) {
+		return invoke(AnnotatedType, annotations, underlyingType);
 	}
 	
 	//javac versions: 6-8

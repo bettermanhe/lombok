@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009-2019 The Project Lombok Authors.
+ * Copyright (C) 2009-2020 The Project Lombok Authors.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,6 +26,7 @@ import static lombok.eclipse.Eclipse.*;
 import static lombok.eclipse.EclipseAugments.*;
 import static lombok.eclipse.handlers.EclipseHandlerUtil.EclipseReflectiveMembers.*;
 
+import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -43,10 +44,12 @@ import org.eclipse.jdt.internal.compiler.ast.AbstractMethodDeclaration;
 import org.eclipse.jdt.internal.compiler.ast.AbstractVariableDeclaration;
 import org.eclipse.jdt.internal.compiler.ast.AllocationExpression;
 import org.eclipse.jdt.internal.compiler.ast.Annotation;
+import org.eclipse.jdt.internal.compiler.ast.Argument;
 import org.eclipse.jdt.internal.compiler.ast.ArrayInitializer;
 import org.eclipse.jdt.internal.compiler.ast.ArrayQualifiedTypeReference;
 import org.eclipse.jdt.internal.compiler.ast.ArrayTypeReference;
 import org.eclipse.jdt.internal.compiler.ast.AssertStatement;
+import org.eclipse.jdt.internal.compiler.ast.BinaryExpression;
 import org.eclipse.jdt.internal.compiler.ast.Block;
 import org.eclipse.jdt.internal.compiler.ast.CastExpression;
 import org.eclipse.jdt.internal.compiler.ast.CharLiteral;
@@ -112,6 +115,7 @@ import lombok.core.AnnotationValues.AnnotationValue;
 import lombok.core.LombokImmutableList;
 import lombok.core.TypeResolver;
 import lombok.core.configuration.CheckerFrameworkVersion;
+import lombok.core.configuration.NullAnnotationLibrary;
 import lombok.core.configuration.NullCheckExceptionType;
 import lombok.core.configuration.TypeName;
 import lombok.core.debug.ProblemReporter;
@@ -230,14 +234,7 @@ public class EclipseHandlerUtil {
 	 * @param typeRef A type reference to check.
 	 */
 	public static boolean typeMatches(Class<?> type, EclipseNode node, TypeReference typeRef) {
-		if (typeRef == null || typeRef.getTypeName() == null || typeRef.getTypeName().length == 0) return false;
-		String lastPartA = new String(typeRef.getTypeName()[typeRef.getTypeName().length -1]);
-		String lastPartB = type.getSimpleName();
-		if (!lastPartA.equals(lastPartB)) return false;
-		String typeName = toQualifiedName(typeRef.getTypeName());
-		
-		TypeResolver resolver = new TypeResolver(node.getImportList());
-		return resolver.typeMatches(node, type.getName(), typeName);
+		return typeMatches(type.getName(), node, typeRef);
 	}
 	
 	/**
@@ -251,7 +248,7 @@ public class EclipseHandlerUtil {
 		char[][] tn = typeRef == null ? null : typeRef.getTypeName();
 		if (tn == null || tn.length == 0) return false;
 		char[] lastPartA = tn[tn.length - 1];
-		int lastIndex = type.lastIndexOf('.') + 1;
+		int lastIndex = Math.max(type.lastIndexOf('.'), type.lastIndexOf('$')) + 1;
 		if (lastPartA.length != type.length() - lastIndex) return false;
 		for (int i = 0; i < lastPartA.length; i++) if (lastPartA[i] != type.charAt(i + lastIndex)) return false;
 		String typeName = toQualifiedName(tn);
@@ -333,14 +330,16 @@ public class EclipseHandlerUtil {
 		public static final Field STRING_LITERAL__LINE_NUMBER;
 		public static final Field ANNOTATION__MEMBER_VALUE_PAIR_NAME;
 		public static final Field TYPE_REFERENCE__ANNOTATIONS;
-		public static final Class<?> INTERSECTION_BINDING;
-		public static final Field INTERSECTION_BINDING_TYPES;
+		public static final Class<?> INTERSECTION_BINDING1, INTERSECTION_BINDING2;
+		public static final Field INTERSECTION_BINDING_TYPES1, INTERSECTION_BINDING_TYPES2;
 		static {
 			STRING_LITERAL__LINE_NUMBER = getField(StringLiteral.class, "lineNumber");
 			ANNOTATION__MEMBER_VALUE_PAIR_NAME = getField(Annotation.class, "memberValuePairName");
 			TYPE_REFERENCE__ANNOTATIONS = getField(TypeReference.class, "annotations");
-			INTERSECTION_BINDING = getClass("org.eclipse.jdt.internal.compiler.lookup.IntersectionTypeBinding18");
-			INTERSECTION_BINDING_TYPES = INTERSECTION_BINDING == null ? null : getField(INTERSECTION_BINDING, "intersectingTypes");
+			INTERSECTION_BINDING1 = getClass("org.eclipse.jdt.internal.compiler.lookup.IntersectionTypeBinding18");
+			INTERSECTION_BINDING2 = getClass("org.eclipse.jdt.internal.compiler.lookup.IntersectionCastTypeBinding");
+			INTERSECTION_BINDING_TYPES1 = INTERSECTION_BINDING1 == null ? null : getField(INTERSECTION_BINDING1, "intersectingTypes");
+			INTERSECTION_BINDING_TYPES2 = INTERSECTION_BINDING2 == null ? null : getField(INTERSECTION_BINDING2, "intersectingTypes");
 		}
 		
 		public static int reflectInt(Field f, Object o) {
@@ -384,7 +383,7 @@ public class EclipseHandlerUtil {
 		}
 	}
 	
-	private static Expression copyAnnotationMemberValue(Expression in) {
+	public static Expression copyAnnotationMemberValue(Expression in) {
 		Expression out = copyAnnotationMemberValue0(in);
 		out.constant = in.constant;
 		return out;
@@ -425,12 +424,11 @@ public class EclipseHandlerUtil {
 		
 		if (in instanceof SingleNameReference) {
 			SingleNameReference snr = (SingleNameReference) in;
-			long p = (long) s << 32 | e;
-			return new SingleNameReference(snr.token, p);
+			return new SingleNameReference(snr.token, pos(in));
 		}
 		if (in instanceof QualifiedNameReference) {
 			QualifiedNameReference qnr = (QualifiedNameReference) in;
-			return new QualifiedNameReference(qnr.tokens, qnr.sourcePositions, s, e);
+			return new QualifiedNameReference(qnr.tokens, poss(in, qnr.tokens.length), s, e);
 		}
 		
 		// class refs
@@ -446,8 +444,19 @@ public class EclipseHandlerUtil {
 			out.sourceEnd = e;
 			out.bits = in.bits;
 			out.implicitConversion = in.implicitConversion;
-			out.statementEnd = in.statementEnd;
+			out.statementEnd = e;
 			out.expressions = copy;
+			return out;
+		}
+		
+		if (in instanceof BinaryExpression) {
+			BinaryExpression be = (BinaryExpression) in;
+			BinaryExpression out = new BinaryExpression(be);
+			out.left = copyAnnotationMemberValue(be.left);
+			out.right = copyAnnotationMemberValue(be.right);
+			out.sourceStart = s;
+			out.sourceEnd = e;
+			out.statementEnd = e;
 			return out;
 		}
 		
@@ -505,7 +514,13 @@ public class EclipseHandlerUtil {
 		} catch (Exception ignore) {}
 	}
 	
-	public static TypeReference namePlusTypeParamsToTypeReference(char[] typeName, TypeParameter[] params, long p) {
+	public static TypeReference namePlusTypeParamsToTypeReference(EclipseNode type, TypeParameter[] params, long p) {
+		TypeDeclaration td = (TypeDeclaration) type.get();
+		boolean instance = (td.modifiers & MODIFIERS_INDICATING_STATIC) == 0;
+		return namePlusTypeParamsToTypeReference(type.up(), td.name, instance, params, p);
+	}
+	
+	public static TypeReference namePlusTypeParamsToTypeReference(EclipseNode parentType, char[] typeName, boolean instance, TypeParameter[] params, long p) {
 		if (params != null && params.length > 0) {
 			TypeReference[] refs = new TypeReference[params.length];
 			int idx = 0;
@@ -513,10 +528,10 @@ public class EclipseHandlerUtil {
 				TypeReference typeRef = new SingleTypeReference(param.name, p);
 				refs[idx++] = typeRef;
 			}
-			return new ParameterizedSingleTypeReference(typeName, refs, 0, p);
+			return generateParameterizedTypeReference(parentType, typeName, instance, refs, p);
 		}
 		
-		return new SingleTypeReference(typeName, p);
+		return generateTypeReference(parentType, typeName, instance, p);
 	}
 	
 	public static TypeReference[] copyTypes(TypeReference[] refs) {
@@ -652,9 +667,11 @@ public class EclipseHandlerUtil {
 		
 		Annotation[][] b = new Annotation[a.length][];
 		for (int i = 0; i < a.length; i++) {
-			b[i] = new Annotation[a[i].length];
-			for (int j = 0 ; j < a[i].length; j++) {
-				b[i][j] = copyAnnotation(a[i][j], a[i][j]);
+			if (a[i] != null) {
+				b[i] = new Annotation[a[i].length];
+				for (int j = 0 ; j < a[i].length; j++) {
+					b[i][j] = copyAnnotation(a[i][j], a[i][j]);
+				}
 			}
 		}
 		
@@ -739,6 +756,20 @@ public class EclipseHandlerUtil {
 		}
 	}
 	
+	public static String scanForNearestAnnotation(EclipseNode node, String... anns) {
+		while (node != null) {
+			for (EclipseNode ann : node.down()) {
+				if (ann.getKind() != Kind.ANNOTATION) continue;
+				Annotation a = (Annotation) ann.get();
+				TypeReference aType = a.type;
+				for (String annToFind : anns) if (typeMatches(annToFind, node, aType)) return annToFind;
+			}
+			node = node.up();
+		}
+		
+		return null;
+	}
+	
 	public static boolean hasNonNullAnnotations(EclipseNode node) {
 		AbstractVariableDeclaration avd = (AbstractVariableDeclaration) node.get();
 		if (avd.annotations == null) return false;
@@ -795,6 +826,20 @@ public class EclipseHandlerUtil {
 	 * Searches the given field node for annotations that are specifically intentioned to be copied to the setter.
 	 */
 	public static Annotation[] findCopyableToSetterAnnotations(EclipseNode node) {
+		return findAnnotationsInList(node, COPY_TO_SETTER_ANNOTATIONS);
+	}
+
+	/**
+	 * Searches the given field node for annotations that are specifically intentioned to be copied to the builder's singular method.
+	 */
+	public static Annotation[] findCopyableToBuilderSingularSetterAnnotations(EclipseNode node) {
+		return findAnnotationsInList(node, COPY_TO_BUILDER_SINGULAR_SETTER_ANNOTATIONS);
+	}
+	
+	/**
+	 * Searches the given field node for annotations that are in the given list, and returns those.
+	 */
+	private static Annotation[] findAnnotationsInList(EclipseNode node, java.util.List<String> annotationsToFind) {
 		AbstractVariableDeclaration avd = (AbstractVariableDeclaration) node.get();
 		if (avd.annotations == null) return EMPTY_ANNOTATIONS_ARRAY;
 		List<Annotation> result = new ArrayList<Annotation>();
@@ -802,7 +847,7 @@ public class EclipseHandlerUtil {
 		for (Annotation annotation : avd.annotations) {
 			TypeReference typeRef = annotation.type;
 			if (typeRef != null && typeRef.getTypeName() != null) {
-				for (String bn : COPY_TO_SETTER_ANNOTATIONS) if (typeMatches(bn, node, typeRef)) {
+				for (String bn : annotationsToFind) if (typeMatches(bn, node, typeRef)) {
 					result.add(annotation);
 					break;
 				}
@@ -851,19 +896,205 @@ public class EclipseHandlerUtil {
 					if (source != null) setGeneratedBy(typeRef, source);
 					refs[idx++] = typeRef;
 				}
-				result = new ParameterizedSingleTypeReference(typeDecl.name, refs, 0, p);
+				result = generateParameterizedTypeReference(type, refs, p);
 			} else {
-				result = new SingleTypeReference(((TypeDeclaration)type.get()).name, p);
+				result = generateTypeReference(type, p);
 			}
 		}
 		if (result != null && source != null) setGeneratedBy(result, source);
 		return result;
 	}
 	
+	public static TypeReference generateParameterizedTypeReference(EclipseNode type, TypeReference[] typeParams, long p) {
+		TypeDeclaration td = (TypeDeclaration) type.get();
+		char[][] tn = getQualifiedInnerName(type.up(), td.name);
+		if (tn.length == 1) return new ParameterizedSingleTypeReference(tn[0], typeParams, 0, p);
+		int tnLen = tn.length;
+		long[] ps = new long[tnLen];
+		for (int i = 0; i < tnLen; i++) ps[i] = p;
+		TypeReference[][] rr = new TypeReference[tnLen][];
+		rr[tnLen - 1] = typeParams;
+		boolean instance = (td.modifiers & MODIFIERS_INDICATING_STATIC) == 0;
+		if (instance) fillOuterTypeParams(rr, tnLen - 2, type.up(), p);
+		return new ParameterizedQualifiedTypeReference(tn, rr, 0, ps);
+	}
+	
+	public static TypeReference generateParameterizedTypeReference(EclipseNode parent, char[] name, boolean instance, TypeReference[] typeParams, long p) {
+		char[][] tn = getQualifiedInnerName(parent, name);
+		if (tn.length == 1) return new ParameterizedSingleTypeReference(tn[0], typeParams, 0, p);
+		int tnLen = tn.length;
+		long[] ps = new long[tnLen];
+		for (int i = 0; i < tnLen; i++) ps[i] = p;
+		TypeReference[][] rr = new TypeReference[tnLen][];
+		rr[tnLen - 1] = typeParams;
+		if (instance) fillOuterTypeParams(rr, tnLen - 2, parent, p);
+		return new ParameterizedQualifiedTypeReference(tn, rr, 0, ps);
+	}
+	
+	private static final int MODIFIERS_INDICATING_STATIC = ClassFileConstants.AccInterface | ClassFileConstants.AccStatic | ClassFileConstants.AccEnum;
+	
+	/**
+	 * This class will add type params to fully qualified chain of type references for inner types, such as {@code GrandParent.Parent.Child}; this is needed only as long as the chain does not involve static.
+	 * 
+	 * @return {@code true} if at least one parameterization is actually added, {@code false} otherwise.
+	 */
+	private static boolean fillOuterTypeParams(TypeReference[][] rr, int idx, EclipseNode node, long p) {
+		if (idx < 0 || node == null || !(node.get() instanceof TypeDeclaration)) return false;
+		boolean filled = false;
+		TypeDeclaration td = (TypeDeclaration) node.get();
+		if (0 != (td.modifiers & (ClassFileConstants.AccInterface | ClassFileConstants.AccEnum))) {
+			// any class defs inside an enum or interface are static, even if not marked as such.
+			return false;
+		}
+		TypeParameter[] tps = td.typeParameters;
+		if (tps != null && tps.length > 0) {
+			TypeReference[] trs = new TypeReference[tps.length];
+			for (int i = 0; i < tps.length; i++) {
+				trs[i] = new SingleTypeReference(tps[i].name, p);
+			}
+			rr[idx] = trs;
+			filled = true;
+		}
+		
+		if ((td.modifiers & MODIFIERS_INDICATING_STATIC) != 0) return filled; // Once we hit a static class, no further typeparams needed.
+		boolean f2 = fillOuterTypeParams(rr, idx - 1, node.up(), p);
+		return f2 || filled;
+	}
+	
+	public static NameReference generateNameReference(EclipseNode type, long p) {
+		char[][] tn = getQualifiedInnerName(type.up(), ((TypeDeclaration) type.get()).name);
+		if (tn.length == 1) return new SingleNameReference(tn[0], p);
+		int tnLen = tn.length;
+		long[] ps = new long[tnLen];
+		for (int i = 0; i < tnLen; i++) ps[i] = p;
+		int ss = (int) (p >> 32);
+		int se = (int) p;
+		return new QualifiedNameReference(tn, ps, ss, se);
+	}
+	
+	public static NameReference generateNameReference(EclipseNode parent, char[] name, long p) {
+		char[][] tn = getQualifiedInnerName(parent, name);
+		if (tn.length == 1) return new SingleNameReference(tn[0], p);
+		int tnLen = tn.length;
+		long[] ps = new long[tnLen];
+		for (int i = 0; i < tnLen; i++) ps[i] = p;
+		int ss = (int) (p >> 32);
+		int se = (int) p;
+		return new QualifiedNameReference(tn, ps, ss, se);
+	}
+	
+	public static TypeReference generateTypeReference(EclipseNode type, long p) {
+		TypeDeclaration td = (TypeDeclaration) type.get();
+		char[][] tn = getQualifiedInnerName(type.up(), td.name);
+		if (tn.length == 1) return new SingleTypeReference(tn[0], p);
+		int tnLen = tn.length;
+		long[] ps = new long[tnLen];
+		for (int i = 0; i < tnLen; i++) ps[i] = p;
+		
+		
+		boolean instance = (td.modifiers & MODIFIERS_INDICATING_STATIC) == 0 && type.up() != null && type.up().get() instanceof TypeDeclaration;
+		if (instance) {
+			TypeReference[][] trs = new TypeReference[tn.length][];
+			boolean filled = fillOuterTypeParams(trs, trs.length - 2, type.up(), p);
+			if (filled) return new ParameterizedQualifiedTypeReference(tn, trs, 0, ps);
+		}
+		
+		return new QualifiedTypeReference(tn, ps);
+	}
+	
+	public static TypeReference generateTypeReference(EclipseNode parent, char[] name, boolean instance, long p) {
+		char[][] tn = getQualifiedInnerName(parent, name);
+		if (tn.length == 1) return new SingleTypeReference(tn[0], p);
+		int tnLen = tn.length;
+		long[] ps = new long[tnLen];
+		for (int i = 0; i < tnLen; i++) ps[i] = p;
+		
+		if (instance && parent != null && parent.get() instanceof TypeDeclaration) {
+			TypeReference[][] trs = new TypeReference[tn.length][];
+			if (fillOuterTypeParams(trs, tn.length - 2, parent, p)) return new ParameterizedQualifiedTypeReference(tn, trs, 0, ps);
+		}
+		
+		return new QualifiedTypeReference(tn, ps);
+	}
+	
+	/**
+	 * Generate a chain of names for the enclosing classes.
+	 * 
+	 * Given for example {@code class Outer { class Inner {} }} this would generate {@code char[][] { "Outer", "Inner" }}.
+	 * For method local and top level types, this generates a size-1 char[][] where the only char[] element is {@code name} itself.
+	 */
+	public static char[][] getQualifiedInnerName(EclipseNode parent, char[] name) {
+		int count = 0;
+		
+		EclipseNode n = parent;
+		while (n != null && n.getKind() == Kind.TYPE && n.get() instanceof TypeDeclaration) {
+			TypeDeclaration td = (TypeDeclaration) n.get();
+			if (td.name == null || td.name.length == 0) break;
+			count++;
+			n = n.up();
+		}
+		
+		if (count == 0) return new char[][] { name };
+		char[][] res = new char[count + 1][];
+		res[count] = name;
+		
+		n = parent;
+		while (n != null && n.getKind() == Kind.TYPE && n.get() instanceof TypeDeclaration) {
+			TypeDeclaration td = (TypeDeclaration) n.get();
+			res[--count] = td.name;
+			n = n.up();
+		}
+		
+		return res;
+	}
+	
+	private static final char[] OBJECT_SIG = "Ljava/lang/Object;".toCharArray();
+	
+	private static int compare(char[] a, char[] b) {
+		if (a == null) return b == null ? 0 : -1;
+		if (b == null) return +1;
+		int len = Math.min(a.length, b.length);
+		for (int i = 0; i < len; i++) {
+			if (a[i] < b[i]) return -1;
+			if (a[i] > b[i]) return +1;
+		}
+		return a.length < b.length ? -1 : a.length > b.length ? +1 : 0;
+	}
+	
 	public static TypeReference makeType(TypeBinding binding, ASTNode pos, boolean allowCompound) {
-		if (binding.getClass() == EclipseReflectiveMembers.INTERSECTION_BINDING) {
-			Object[] arr = (Object[]) EclipseReflectiveMembers.reflect(EclipseReflectiveMembers.INTERSECTION_BINDING_TYPES, binding);
-			binding = (TypeBinding) arr[0];
+		Object[] arr = null;
+		if (binding.getClass() == EclipseReflectiveMembers.INTERSECTION_BINDING1) {
+			arr = (Object[]) EclipseReflectiveMembers.reflect(EclipseReflectiveMembers.INTERSECTION_BINDING_TYPES1, binding);
+		} else if (binding.getClass() == EclipseReflectiveMembers.INTERSECTION_BINDING2) {
+			arr = (Object[]) EclipseReflectiveMembers.reflect(EclipseReflectiveMembers.INTERSECTION_BINDING_TYPES2, binding);
+		}
+		
+		if (arr != null) {
+			// Is there a class? Alphabetically lowest wins.
+			TypeBinding winner = null;
+			int winLevel = 0; // 100 = array, 50 = class, 20 = typevar, 15 = wildcard, 10 = interface, 1 = Object.
+			for (Object b : arr) {
+				if (b instanceof TypeBinding) {
+					TypeBinding tb = (TypeBinding) b;
+					int level = 0;
+					if (tb.isArrayType()) level = 100;
+					else if (tb.isClass()) level = 50;
+					else if (tb.isTypeVariable()) level = 20;
+					else if (tb.isWildcard()) level = 15;
+					else level = 10;
+					
+					if (level == 50 && compare(tb.signature(), OBJECT_SIG) == 0) level = 1;
+					
+					if (winLevel > level) continue;
+					if (winLevel < level) {
+						winner = tb;
+						winLevel = level;
+						continue;
+					}
+					if (compare(winner.signature(), tb.signature()) > 0) winner = tb;
+				}
+			}
+			binding = winner;
 		}
 		int dims = binding.dimensions();
 		binding = binding.leafComponentType();
@@ -1384,7 +1615,7 @@ public class EclipseHandlerUtil {
 	
 	/**
 	 * Translates the given field into all possible getter names.
-	 * Convenient wrapper around {@link TransformationsUtil#toAllGetterNames(lombok.core.AnnotationValues, CharSequence, boolean)}.
+	 * Convenient wrapper around {@link HandlerUtil#toAllGetterNames(lombok.core.AnnotationValues, CharSequence, boolean)}.
 	 */
 	public static List<String> toAllGetterNames(EclipseNode field, boolean isBoolean) {
 		return HandlerUtil.toAllGetterNames(field.getAst(), getAccessorsForField(field), field.getName(), isBoolean);
@@ -1393,7 +1624,7 @@ public class EclipseHandlerUtil {
 	/**
 	 * @return the likely getter name for the stated field. (e.g. private boolean foo; to isFoo).
 	 * 
-	 * Convenient wrapper around {@link TransformationsUtil#toGetterName(lombok.core.AnnotationValues, CharSequence, boolean)}.
+	 * Convenient wrapper around {@link HandlerUtil#toGetterName(lombok.core.AnnotationValues, CharSequence, boolean)}.
 	 */
 	public static String toGetterName(EclipseNode field, boolean isBoolean) {
 		return HandlerUtil.toGetterName(field.getAst(), getAccessorsForField(field), field.getName(), isBoolean);
@@ -1401,7 +1632,7 @@ public class EclipseHandlerUtil {
 	
 	/**
 	 * Translates the given field into all possible setter names.
-	 * Convenient wrapper around {@link TransformationsUtil#toAllSetterNames(lombok.core.AnnotationValues, CharSequence, boolean)}.
+	 * Convenient wrapper around {@link HandlerUtil#toAllSetterNames(lombok.core.AnnotationValues, CharSequence, boolean)}.
 	 */
 	public static java.util.List<String> toAllSetterNames(EclipseNode field, boolean isBoolean) {
 		return HandlerUtil.toAllSetterNames(field.getAst(), getAccessorsForField(field), field.getName(), isBoolean);
@@ -1410,7 +1641,7 @@ public class EclipseHandlerUtil {
 	/**
 	 * @return the likely setter name for the stated field. (e.g. private boolean foo; to setFoo).
 	 * 
-	 * Convenient wrapper around {@link TransformationsUtil#toSetterName(lombok.core.AnnotationValues, CharSequence, boolean)}.
+	 * Convenient wrapper around {@link HandlerUtil#toSetterName(lombok.core.AnnotationValues, CharSequence, boolean)}.
 	 */
 	public static String toSetterName(EclipseNode field, boolean isBoolean) {
 		return HandlerUtil.toSetterName(field.getAst(), getAccessorsForField(field), field.getName(), isBoolean);
@@ -1418,19 +1649,36 @@ public class EclipseHandlerUtil {
 	
 	/**
 	 * Translates the given field into all possible with names.
-	 * Convenient wrapper around {@link TransformationsUtil#toAllWithNames(lombok.core.AnnotationValues, CharSequence, boolean)}.
+	 * Convenient wrapper around {@link HandlerUtil#toAllWithNames(lombok.core.AnnotationValues, CharSequence, boolean)}.
 	 */
 	public static java.util.List<String> toAllWithNames(EclipseNode field, boolean isBoolean) {
 		return HandlerUtil.toAllWithNames(field.getAst(), getAccessorsForField(field), field.getName(), isBoolean);
 	}
 	
 	/**
+	 * Translates the given field into all possible withBy names.
+	 * Convenient wrapper around {@link HandlerUtil#toAllWithByNames(lombok.core.AnnotationValues, CharSequence, boolean)}.
+	 */
+	public static java.util.List<String> toAllWithByNames(EclipseNode field, boolean isBoolean) {
+		return HandlerUtil.toAllWithByNames(field.getAst(), getAccessorsForField(field), field.getName(), isBoolean);
+	}
+	
+	/**
 	 * @return the likely with name for the stated field. (e.g. private boolean foo; to withFoo).
 	 * 
-	 * Convenient wrapper around {@link TransformationsUtil#toWithName(lombok.core.AnnotationValues, CharSequence, boolean)}.
+	 * Convenient wrapper around {@link HandlerUtil#toWithName(lombok.core.AnnotationValues, CharSequence, boolean)}.
 	 */
 	public static String toWithName(EclipseNode field, boolean isBoolean) {
 		return HandlerUtil.toWithName(field.getAst(), getAccessorsForField(field), field.getName(), isBoolean);
+	}
+	
+	/**
+	 * @return the likely withBy name for the stated field. (e.g. private boolean foo; to withFooBy).
+	 * 
+	 * Convenient wrapper around {@link HandlerUtil#toWithByName(lombok.core.AnnotationValues, CharSequence, boolean)}.
+	 */
+	public static String toWithByName(EclipseNode field, boolean isBoolean) {
+		return HandlerUtil.toWithByName(field.getAst(), getAccessorsForField(field), field.getName(), isBoolean);
 	}
 	
 	/**
@@ -1535,12 +1783,14 @@ public class EclipseHandlerUtil {
 	 */
 	public static MemberExistsResult fieldExists(String fieldName, EclipseNode node) {
 		node = upToTypeNode(node);
+		char[] fieldNameChars = null;
 		if (node != null && node.get() instanceof TypeDeclaration) {
-			TypeDeclaration typeDecl = (TypeDeclaration)node.get();
+			TypeDeclaration typeDecl = (TypeDeclaration) node.get();
 			if (typeDecl.fields != null) for (FieldDeclaration def : typeDecl.fields) {
 				char[] fName = def.name;
 				if (fName == null) continue;
-				if (fieldName.equals(new String(fName))) {
+				if (fieldNameChars == null) fieldNameChars = fieldName.toCharArray();
+				if (Arrays.equals(fName, fieldNameChars)) {
 					return getGeneratedBy(def) == null ? MemberExistsResult.EXISTS_BY_USER : MemberExistsResult.EXISTS_BY_LOMBOK;
 				}
 			}
@@ -1747,7 +1997,8 @@ public class EclipseHandlerUtil {
 		return typeNode.add(type, Kind.TYPE);
 	}
 	
-	private static final char[] ALL = "all".toCharArray();
+	static final char[] ALL = "all".toCharArray();
+	static final char[] UNCHECKED = "unchecked".toCharArray();
 	private static final char[] JUSTIFICATION = "justification".toCharArray();
 	private static final char[] GENERATED_CODE = "generated code".toCharArray();
 	private static final char[] LOMBOK = "lombok".toCharArray();
@@ -1756,7 +2007,11 @@ public class EclipseHandlerUtil {
 	private static final char[][] EDU_UMD_CS_FINDBUGS_ANNOTATIONS_SUPPRESSFBWARNINGS = Eclipse.fromQualifiedName("edu.umd.cs.findbugs.annotations.SuppressFBWarnings");
 	
 	public static Annotation[] addSuppressWarningsAll(EclipseNode node, ASTNode source, Annotation[] originalAnnotationArray) {
-		Annotation[] anns = addAnnotation(source, originalAnnotationArray, TypeConstants.JAVA_LANG_SUPPRESSWARNINGS, new StringLiteral(ALL, 0, 0, 0));
+		Annotation[] anns = originalAnnotationArray;
+		
+		if (!Boolean.FALSE.equals(node.getAst().readConfiguration(ConfigurationKeys.ADD_SUPPRESSWARNINGS_ANNOTATIONS))) {
+			anns = addAnnotation(source, anns, TypeConstants.JAVA_LANG_SUPPRESSWARNINGS, new StringLiteral(ALL, 0, 0, 0));
+		}
 		
 		if (Boolean.TRUE.equals(node.getAst().readConfiguration(ConfigurationKeys.ADD_FINDBUGS_SUPPRESSWARNINGS_ANNOTATIONS))) {
 			MemberValuePair mvp = new MemberValuePair(JUSTIFICATION, 0, 0, new StringLiteral(GENERATED_CODE, 0, 0, 0));
@@ -1772,12 +2027,16 @@ public class EclipseHandlerUtil {
 			result = addAnnotation(source, result, JAVAX_ANNOTATION_GENERATED, new StringLiteral(LOMBOK, 0, 0, 0));
 		}
 		if (Boolean.TRUE.equals(node.getAst().readConfiguration(ConfigurationKeys.ADD_LOMBOK_GENERATED_ANNOTATIONS))) {
-			result = addAnnotation(source, result, LOMBOK_GENERATED, null);
+			result = addAnnotation(source, result, LOMBOK_GENERATED);
 		}
 		return result;
 	}
 	
-	private static Annotation[] addAnnotation(ASTNode source, Annotation[] originalAnnotationArray, char[][] annotationTypeFqn, ASTNode arg) {
+	static Annotation[] addAnnotation(ASTNode source, Annotation[] originalAnnotationArray, char[][] annotationTypeFqn) {
+		return addAnnotation(source, originalAnnotationArray, annotationTypeFqn, (ASTNode[]) null);
+	}
+	
+	static Annotation[] addAnnotation(ASTNode source, Annotation[] originalAnnotationArray, char[][] annotationTypeFqn, ASTNode... args) {
 		char[] simpleName = annotationTypeFqn[annotationTypeFqn.length - 1];
 		
 		if (originalAnnotationArray != null) for (Annotation ann : originalAnnotationArray) {
@@ -1799,20 +2058,23 @@ public class EclipseHandlerUtil {
 		QualifiedTypeReference qualifiedType = new QualifiedTypeReference(annotationTypeFqn, poss);
 		setGeneratedBy(qualifiedType, source);
 		Annotation ann;
-		if (arg instanceof Expression) {
+		if (args != null && args.length == 1 && args[0] instanceof Expression) {
 			SingleMemberAnnotation sma = new SingleMemberAnnotation(qualifiedType, pS);
 			sma.declarationSourceEnd = pE;
-			arg.sourceStart = pS;
-			arg.sourceEnd = pE;
-			sma.memberValue = (Expression) arg;
+			args[0].sourceStart = pS;
+			args[0].sourceEnd = pE;
+			sma.memberValue = (Expression) args[0];
 			setGeneratedBy(sma.memberValue, source);
 			ann = sma;
-		} else if (arg instanceof MemberValuePair) {
+		} else if (args != null && args.length >= 1 && arrayHasOnlyElementsOfType(args, MemberValuePair.class)) {
 			NormalAnnotation na = new NormalAnnotation(qualifiedType, pS);
 			na.declarationSourceEnd = pE;
-			arg.sourceStart = pS;
-			arg.sourceEnd = pE;
-			na.memberValuePairs = new MemberValuePair[] {(MemberValuePair) arg};
+			na.memberValuePairs = new MemberValuePair[args.length];
+			for (int i = 0; i < args.length; i++) {
+				args[i].sourceStart = pS;
+				args[i].sourceEnd = pE;
+				na.memberValuePairs[i] = (MemberValuePair) args[i];			
+			}
 			setGeneratedBy(na.memberValuePairs[0], source);
 			setGeneratedBy(na.memberValuePairs[0].value, source);
 			na.memberValuePairs[0].value.sourceStart = pS;
@@ -1831,11 +2093,19 @@ public class EclipseHandlerUtil {
 		return newAnnotationArray;
 	}
 	
+	private static boolean arrayHasOnlyElementsOfType(Object[] array, Class<?> clazz) {
+		for (Object element : array) {
+			if (!clazz.isInstance(element))
+				return false;
+		}
+		return true;
+	}
+
 	/**
 	 * Generates a new statement that checks if the given local variable is null, and if so, throws a specified exception with the
 	 * variable name as message.
 	 */
-	public static Statement generateNullCheck(TypeReference type, char[] variable, EclipseNode sourceNode) {
+	public static Statement generateNullCheck(TypeReference type, char[] variable, EclipseNode sourceNode, String customMessage) {
 		NullCheckExceptionType exceptionType = sourceNode.getAst().readConfiguration(ConfigurationKeys.NON_NULL_EXCEPTION_TYPE);
 		if (exceptionType == null) exceptionType = NullCheckExceptionType.NULL_POINTER_EXCEPTION;
 		
@@ -1844,11 +2114,11 @@ public class EclipseHandlerUtil {
 		int pS = source.sourceStart, pE = source.sourceEnd;
 		long p = (long) pS << 32 | pE;
 		
-		if (isPrimitive(type)) return null;
+		if (type != null && isPrimitive(type)) return null;
 		SingleNameReference varName = new SingleNameReference(variable, p);
 		setGeneratedBy(varName, source);
 		
-		StringLiteral message = new StringLiteral(exceptionType.toExceptionMessage(new String(variable)).toCharArray(), pS, pE, 0);
+		StringLiteral message = new StringLiteral(exceptionType.toExceptionMessage(new String(variable), customMessage).toCharArray(), pS, pE, 0);
 		setGeneratedBy(message, source);
 		
 		LombokImmutableList<String> method = exceptionType.getMethod();
@@ -1863,7 +2133,7 @@ public class EclipseHandlerUtil {
 				utilityTypeName[i] = method.get(i).toCharArray();
 			}
 			
-			invocation.receiver = new QualifiedNameReference(utilityTypeName, new long[method.size()], pS, pE);
+			invocation.receiver = new QualifiedNameReference(utilityTypeName, new long[method.size() - 1], pS, pE);
 			setGeneratedBy(invocation.receiver, source);
 			invocation.selector = method.get(method.size() - 1).toCharArray();
 			invocation.arguments = new Expression[] {varName, message};
@@ -1914,8 +2184,8 @@ public class EclipseHandlerUtil {
 	 * 
 	 * @param exName The name of the exception to throw; normally {@code java.lang.NullPointerException}.
 	 */
-	public static Statement generateNullCheck(AbstractVariableDeclaration variable, EclipseNode sourceNode) {
-		return generateNullCheck(variable.type, variable.name, sourceNode);
+	public static Statement generateNullCheck(AbstractVariableDeclaration variable, EclipseNode sourceNode, String customMessage) {
+		return generateNullCheck(variable.type, variable.name, sourceNode, customMessage);
 	}
 	
 	/**
@@ -1943,7 +2213,7 @@ public class EclipseHandlerUtil {
 			if (list.isEmpty()) break;
 			if (child.getKind() != Kind.FIELD) continue;
 			if (excludeStandard) {
-				if ((((FieldDeclaration)child.get()).modifiers & ClassFileConstants.AccStatic) != 0) continue;
+				if ((((FieldDeclaration) child.get()).modifiers & ClassFileConstants.AccStatic) != 0) continue;
 				if (child.getName().startsWith("$")) continue;
 			}
 			if (excludeTransient && (((FieldDeclaration)child.get()).modifiers & ClassFileConstants.AccTransient) != 0) continue;
@@ -2218,12 +2488,127 @@ public class EclipseHandlerUtil {
 		return array == null ? null : array.clone();
 	}
 	
+	public static <T> T[] concat(T[] first, T[] second, Class<T> type) {
+		if (first == null)
+			return second;
+		if (second == null)
+			return first;
+		if (first.length == 0)
+			return second;
+		if (second.length == 0)
+			return first;
+		T[] result = newArray(type, first.length + second.length);
+		System.arraycopy(first, 0, result, 0, first.length);
+		System.arraycopy(second, 0, result, first.length, second.length);
+		return result;
+	}
+	
+	@SuppressWarnings("unchecked")
+	private static <T> T[] newArray(Class<T> type, int length) {
+		return (T[]) Array.newInstance(type, length);
+	}
+	
 	public static boolean isDirectDescendantOfObject(EclipseNode typeNode) {
 		if (!(typeNode.get() instanceof TypeDeclaration)) throw new IllegalArgumentException("not a type node");
 		TypeDeclaration typeDecl = (TypeDeclaration) typeNode.get();
 		if (typeDecl.superclass == null) return true;
 		String p = typeDecl.superclass.toString();
 		return p.equals("Object") || p.equals("java.lang.Object");
+	}
+	
+	public static void createRelevantNullableAnnotation(EclipseNode typeNode, MethodDeclaration mth) {
+		NullAnnotationLibrary lib = typeNode.getAst().readConfiguration(ConfigurationKeys.ADD_NULL_ANNOTATIONS);
+		if (lib == null) return;
+		
+		applyAnnotationToMethodDecl(typeNode, mth, lib.getNullableAnnotation(), lib.isTypeUse());
+	}
+	
+	public static void createRelevantNonNullAnnotation(EclipseNode typeNode, MethodDeclaration mth) {
+		NullAnnotationLibrary lib = typeNode.getAst().readConfiguration(ConfigurationKeys.ADD_NULL_ANNOTATIONS);
+		if (lib == null) return;
+		
+		applyAnnotationToMethodDecl(typeNode, mth, lib.getNonNullAnnotation(), lib.isTypeUse());
+	}
+	
+	public static void createRelevantNullableAnnotation(EclipseNode typeNode, Argument arg) {
+		NullAnnotationLibrary lib = typeNode.getAst().readConfiguration(ConfigurationKeys.ADD_NULL_ANNOTATIONS);
+		if (lib == null) return;
+		
+		applyAnnotationToVarDecl(typeNode, arg, lib.getNullableAnnotation(), lib.isTypeUse());
+	}
+	
+	public static void createRelevantNonNullAnnotation(EclipseNode typeNode, Argument arg) {
+		NullAnnotationLibrary lib = typeNode.getAst().readConfiguration(ConfigurationKeys.ADD_NULL_ANNOTATIONS);
+		if (lib == null) return;
+		
+		applyAnnotationToVarDecl(typeNode, arg, lib.getNonNullAnnotation(), lib.isTypeUse());
+	}
+	
+	private static void applyAnnotationToMethodDecl(EclipseNode typeNode, MethodDeclaration mth, String annType, boolean typeUse) {
+		if (annType == null) return;
+		
+		int partCount = 1;
+		for (int i = 0; i < annType.length(); i++) if (annType.charAt(i) == '.') partCount++;
+		long[] ps = new long[partCount];
+		Arrays.fill(ps, 0L);
+		Annotation ann = new MarkerAnnotation(new QualifiedTypeReference(Eclipse.fromQualifiedName(annType), ps), 0);
+		
+		if (!typeUse || mth.returnType == null || mth.returnType.getTypeName().length < 2) {
+			Annotation[] a = mth.annotations;
+			if (a == null) a = new Annotation[1];
+			else {
+				Annotation[] b = new Annotation[a.length + 1];
+				System.arraycopy(a, 0, b, 0, a.length);
+				a = b;
+			}
+			a[a.length - 1] = ann;
+			mth.annotations = a;
+		} else {
+			int len = mth.returnType.getTypeName().length;
+			if (mth.returnType.annotations == null) mth.returnType.annotations = new Annotation[len][];
+			Annotation[] a = mth.returnType.annotations[len - 1];
+			if (a == null) a = new Annotation[1];
+			else {
+				Annotation[] b = new Annotation[a.length + 1];
+				System.arraycopy(a, 0, b, 1, a.length);
+				a = b;
+			}
+			a[0] = ann;
+			mth.returnType.annotations[len - 1] = a;
+		}
+	}
+	private static void applyAnnotationToVarDecl(EclipseNode typeNode, Argument arg, String annType, boolean typeUse) {
+		if (annType == null) return;
+		
+		int partCount = 1;
+		for (int i = 0; i < annType.length(); i++) if (annType.charAt(i) == '.') partCount++;
+		long[] ps = new long[partCount];
+		Arrays.fill(ps, 0L);
+		Annotation ann = new MarkerAnnotation(new QualifiedTypeReference(Eclipse.fromQualifiedName(annType), ps), 0);
+		
+		if (!typeUse || arg.type.getTypeName().length < 2) {
+			Annotation[] a = arg.annotations;
+			if (a == null) a = new Annotation[1];
+			else {
+				Annotation[] b = new Annotation[a.length + 1];
+				System.arraycopy(a, 0, b, 0, a.length);
+				a = b;
+			}
+			a[a.length - 1] = ann;
+			arg.annotations = a;
+		} else {
+			int len = arg.type.getTypeName().length;
+			if (arg.type.annotations == null) arg.type.annotations = new Annotation[len][];
+			Annotation[] a = arg.type.annotations[len - 1];
+			if (a == null) a = new Annotation[1];
+			else {
+				Annotation[] b = new Annotation[a.length + 1];
+				System.arraycopy(a, 0, b, 1, a.length);
+				a = b;
+			}
+			a[0] = ann;
+			arg.type.annotations[len - 1] = a;
+		}
 	}
 	
 	public static NameReference generateQualifiedNameRef(ASTNode source, char[]... varNames) {
